@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payflow-api
+  labels:
+    app: payflow-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: payflow-api
+  template:
+    metadata:
+      labels:
+        app: payflow-api
+    spec:
+      containers:
+        - name: api
+          image: payflow-platform:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: payflow-config
+          env:
+            - name: PAYFLOW_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: payflow-secrets
+                  key: database-url
+            - name: PAYFLOW_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: payflow-secrets
+                  key: redis-url
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payflow-api-service
+  labels:
+    app: payflow-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: payflow-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payflow-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payflow-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

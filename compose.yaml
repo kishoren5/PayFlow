@@ -1,0 +1,103 @@
+# PayFlow Production Scalable Multi-Service Docker Compose Architecture
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: payflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: payflow
+      POSTGRES_PASSWORD: payflow_secret
+      POSTGRES_DB: payflow
+    ports:
+      - "5432:5432"
+    command: >
+      postgres
+      -c max_connections=250
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payflow -d payflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: payflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  payflow-api:
+    build: .
+    container_name: payflow-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PAYFLOW_ENV: production
+      PAYFLOW_LOG_LEVEL: INFO
+      PAYFLOW_DATABASE_URL: postgresql+psycopg2://payflow:payflow_secret@postgres:5432/payflow
+      PAYFLOW_REDIS_URL: redis://redis:6379/0
+      PAYFLOW_DB_POOL_SIZE: 25
+      PAYFLOW_DB_MAX_OVERFLOW: 50
+      PAYFLOW_DB_POOL_TIMEOUT: 30.0
+    command: ["uvicorn", "payflow.gateway.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  payflow-worker:
+    build: .
+    container_name: payflow-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PAYFLOW_ENV: production
+      PAYFLOW_LOG_LEVEL: INFO
+      PAYFLOW_DATABASE_URL: postgresql+psycopg2://payflow:payflow_secret@postgres:5432/payflow
+      PAYFLOW_REDIS_URL: redis://redis:6379/0
+      PAYFLOW_WORKER_POLL_INTERVAL: 0.1
+      PAYFLOW_WORKER_BATCH_SIZE: 100
+    command: ["python", "-m", "payflow.worker"]
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: payflow-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - payflow-api
+
+volumes:
+  postgres_data:
+  redis_data:

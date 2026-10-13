@@ -1,0 +1,20 @@
+groups:
+  - name: payflow_slo_alerts
+    rules:
+      - alert: PayFlowHighOutboxBacklog
+        expr: payflow_outbox_pending_count > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transactional outbox pending event backlog exceeds 500 events"
+          description: "Relay publisher throughput may be impaired. Check outbox relay worker logs."
+
+      - alert: PayFlowHighErrorRate
+        expr: rate(payflow_payments_failed_total[1m]) / rate(payflow_payments_total[1m]) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Payment error rate exceeds 5%"
+          description: "Downstream provider failure or database lock contention detected."

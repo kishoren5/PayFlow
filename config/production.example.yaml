@@ -1,0 +1,15 @@
+# Example only; inject secrets externally and review deployment-specific values.
+service:
+  environment: production
+  request_timeout_ms: 500
+payments:
+  idempotency_retention_hours: 72
+fraud:
+  timeout_ms: 10
+  unavailable_policy: manual_review
+events:
+  delivery_mode: at_least_once
+security:
+  require_merchant_auth: true
+  admin_auth_required: true
+  webhook_destination_allowlist_required: true

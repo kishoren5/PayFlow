@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payflow-worker
+  labels:
+    app: payflow-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payflow-worker
+  template:
+    metadata:
+      labels:
+        app: payflow-worker
+    spec:
+      containers:
+        - name: worker
+          image: payflow-platform:latest
+          command: ["python", "-m", "payflow.worker"]
+          envFrom:
+            - configMapRef:
+                name: payflow-config
+          env:
+            - name: PAYFLOW_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: payflow-secrets
+                  key: database-url
+            - name: PAYFLOW_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: payflow-secrets
+                  key: redis-url
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

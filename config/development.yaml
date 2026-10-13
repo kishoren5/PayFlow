@@ -1,0 +1,13 @@
+service:
+  environment: development
+  request_timeout_ms: 500
+payments:
+  idempotency_retention_hours: 72
+fraud:
+  timeout_ms: 10
+  unavailable_policy: manual_review
+events:
+  delivery_mode: at_least_once
+webhooks:
+  max_attempts: 8
+  initial_backoff_seconds: 2
